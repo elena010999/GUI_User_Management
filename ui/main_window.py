@@ -1,138 +1,112 @@
+#!/usr/bin/env python3
+
 import tkinter as tk
+import ttkbootstrap as tb
 from tkinter import messagebox
+from logic.helper_functions import get_all_users
+from logic.add_user import create_user
+from logic.delete_user import delete_user
+from logic.modify_user import modify_user
+from logic.change_password import change_password
+from logic.lock_unlock_user import lock_unlock_user
+from logic.add_users_to_groups import add_user_to_group
 
-class UserManagerApp:
-    def __init__(self, root):
-        self.root = root
-        self.root.title("Linux User Manager")
-        self.root.geometry("1500x1600")
-        self.root.resizable(False, False)
 
-        self.build_interface()
+class UserManagerApp(tb.Window):
+    def __init__(self):
+        super().__init__(themename="flatly")
+        self.title("Linux User Manager")
+        self.geometry("900x600")
 
-    def build_interface(self):
-        # Buttons frame
-        btn_frame = tk.Frame(self.root)
-        btn_frame.pack(pady=10)
+        # Search box
+        self.search_var = tk.StringVar()
+        self.search_entry = tb.Entry(self, textvariable=self.search_var, width=40)
+        self.search_entry.pack(pady=10)
+        self.search_var.trace_add("write", self.on_search)
 
-        tk.Button(btn_frame, text="Add User", width=20, command=self.show_add_user_form).grid(row=0, column=0, padx=5, pady=5)
-        tk.Button(btn_frame, text="Modify User", width=20, command=lambda: self.show_simple_input("Modify User", "Username")).grid(row=0, column=1, padx=5, pady=5)
-        tk.Button(btn_frame, text="Delete User", width=20, command=lambda: self.show_simple_input("Delete User", "Username")).grid(row=1, column=0, padx=5, pady=5)
-        tk.Button(btn_frame, text="Change Password", width=20, command=lambda: self.show_simple_input("Change Password", "Username")).grid(row=1, column=1, padx=5, pady=5)
-        tk.Button(btn_frame, text="Lock User Account", width=20, command=lambda: self.show_simple_input("Lock User Account", "Username")).grid(row=2, column=0, padx=5, pady=5)
-        tk.Button(btn_frame, text="Unlock User Account", width=20, command=lambda: self.show_simple_input("Unlock User Account", "Username")).grid(row=2, column=1, padx=5, pady=5)
-        tk.Button(btn_frame, text="Add User to Group", width=20, command=lambda: self.show_group_input()).grid(row=3, column=0, padx=5, pady=5)
-        tk.Button(btn_frame, text="List Users & Shells", width=20, command=self.list_users).grid(row=3, column=1, padx=5, pady=5)
-        tk.Button(btn_frame, text="Check if User Exists", width=20, command=lambda: self.show_simple_input("Check User Exists", "Username")).grid(row=4, column=0, padx=5, pady=5)
+        # Frame for user list
+        self.canvas = tk.Canvas(self)
+        self.scrollbar = tk.Scrollbar(self, orient="vertical", command=self.canvas.yview)
+        self.scrollable_frame = tk.Frame(self.canvas)
 
-        # Output box
-        self.output_box = tk.Text(self.root, height=10, width=60)
-        self.output_box.pack(pady=10)
+        self.scrollable_frame.bind(
+            "<Configure>",
+            lambda e: self.canvas.configure(scrollregion=self.canvas.bbox("all"))
+        )
 
-        # Form frame for dynamic inputs
-        self.form_frame = tk.Frame(self.root)
-        self.form_frame.pack(pady=10)
+        self.canvas.create_window((0, 0), window=self.scrollable_frame, anchor="nw")
+        self.canvas.configure(yscrollcommand=self.scrollbar.set)
 
-    def clear_form(self):
-        for widget in self.form_frame.winfo_children():
+        self.canvas.pack(side="left", fill="both", expand=True)
+        self.scrollbar.pack(side="right", fill="y")
+
+        # Cache all users at startup for instant filtering
+        self.all_users_cache = get_all_users()
+        self.show_user_list(self.all_users_cache)
+
+        # Menu buttons
+        menu_frame = tk.Frame(self)
+        menu_frame.pack(fill="x", pady=5)
+        tb.Button(menu_frame, text="Add User", bootstyle="success", command=self.add_user_window).pack(side="left", padx=5)
+        tb.Button(menu_frame, text="Refresh", bootstyle="info", command=self.refresh_user_list).pack(side="left", padx=5)
+
+    # ====== SEARCH ======
+    def on_search(self, *args):
+        search_text = self.search_var.get().lower()
+        filtered_users = [u for u in self.all_users_cache if search_text in u.lower()]
+        self.show_user_list(filtered_users)
+
+    # ====== RENDER USERS ======
+    def show_user_list(self, users):
+        # Clear old widgets
+        for widget in self.scrollable_frame.winfo_children():
             widget.destroy()
 
-    def show_add_user_form(self):
-        self.clear_form()
+        for username in users:
+            row_frame = tk.Frame(self.scrollable_frame)
+            row_frame.pack(fill="x", pady=2)
 
-        tk.Label(self.form_frame, text="Add New User", font=("Arial", 14, "bold")).pack(pady=5)
+            tk.Label(row_frame, text=username, width=20, anchor="w").pack(side="left", padx=5)
+            tb.Button(row_frame, text="Modify", bootstyle="info",
+                      command=lambda u=username: self.modify_user(u)).pack(side="left", padx=2)
+            tb.Button(row_frame, text="Delete", bootstyle="danger",
+                      command=lambda u=username: self.delete_user(u)).pack(side="left", padx=2)
+            tb.Button(row_frame, text="Password", bootstyle="warning",
+                      command=lambda u=username: self.change_password(u)).pack(side="left", padx=2)
+            tb.Button(row_frame, text="Lock/Unlock", bootstyle="secondary",
+                      command=lambda u=username: self.lock_unlock_user(u)).pack(side="left", padx=2)
+            tb.Button(row_frame, text="Add to Group", bootstyle="success",
+                      command=lambda u=username: self.add_to_group([u])).pack(side="left", padx=2)
 
-        # Username
-        tk.Label(self.form_frame, text="Username:").pack(anchor="w")
-        self.username_entry = tk.Entry(self.form_frame, width=30)
-        self.username_entry.pack()
+    # ====== REFRESH ======
+    def refresh_user_list(self):
+        self.all_users_cache = get_all_users()
+        self.show_user_list(self.all_users_cache)
 
-        # Password
-        tk.Label(self.form_frame, text="Password:").pack(anchor="w", pady=(10,0))
-        self.password_entry = tk.Entry(self.form_frame, show="*", width=30)
-        self.password_entry.pack()
+    # ====== USER ACTIONS ======
+    def add_user_window(self):
+        create_user()
 
-        # Group
-        tk.Label(self.form_frame, text="Group (leave blank to create new):").pack(anchor="w", pady=(10,0))
-        self.group_entry = tk.Entry(self.form_frame, width=30)
-        self.group_entry.pack()
+    def modify_user(self, username):
+        modify_user(username)
+        self.refresh_user_list()
 
-        # Shell selection with default
-        tk.Label(self.form_frame, text="Shell:").pack(anchor="w", pady=(10,0))
-        self.shell_var = tk.StringVar(value="/bin/bash")
-        shells = ["/bin/bash", "/bin/sh", "/bin/zsh", "/bin/dash"]
-        self.shell_menu = tk.OptionMenu(self.form_frame, self.shell_var, *shells)
-        self.shell_menu.pack()
+    def delete_user(self, username):
+        delete_user(username)
+        self.refresh_user_list()
 
-        # Submit button
-        tk.Button(self.form_frame, text="Create User", command=self.add_user_submit).pack(pady=15)
+    def change_password(self, username):
+        change_password(self, username)
 
-    def add_user_submit(self):
-        username = self.username_entry.get().strip()
-        password = self.password_entry.get()
-        group = self.group_entry.get().strip()
-        shell = self.shell_var.get()
+    def lock_unlock_user(self, username):
+        # This can be improved to check status first
+        lock_user(self, username)  # Or unlock_user depending on status
 
-        if not username or not password:
-            messagebox.showerror("Input Error", "Username and password are required.")
-            return
+    def add_to_group(self, usernames):
+        add_user_to_group(usernames)
 
-        # Here you would call backend logic to add user with these parameters
-        # For now, just show a summary:
-        output = (f"Creating user:\n"
-                  f"Username: {username}\n"
-                  f"Password: {'*' * len(password)}\n"
-                  f"Group: {group if group else '(new group)'}\n"
-                  f"Shell: {shell}")
-        self.output_box.delete(1.0, tk.END)
-        self.output_box.insert(tk.END, output)
-
-        # Clear form if you want
-        # self.clear_form()
-
-    def show_simple_input(self, action_name, label_text):
-        self.clear_form()
-        tk.Label(self.form_frame, text=action_name, font=("Arial", 14, "bold")).pack(pady=5)
-        tk.Label(self.form_frame, text=f"{label_text}:").pack(anchor="w")
-        self.simple_entry = tk.Entry(self.form_frame, width=30)
-        self.simple_entry.pack()
-        tk.Button(self.form_frame, text="Submit", command=lambda: self.simple_submit(action_name)).pack(pady=10)
-
-    def simple_submit(self, action_name):
-        value = self.simple_entry.get().strip()
-        if not value:
-            messagebox.showerror("Input Error", "Input cannot be empty.")
-            return
-        self.output_box.delete(1.0, tk.END)
-        self.output_box.insert(tk.END, f"{action_name} for '{value}' submitted.")
-
-    def show_group_input(self):
-        self.clear_form()
-        tk.Label(self.form_frame, text="Add User to Group", font=("Arial", 14, "bold")).pack(pady=5)
-        tk.Label(self.form_frame, text="Username:").pack(anchor="w")
-        self.username_entry = tk.Entry(self.form_frame, width=30)
-        self.username_entry.pack()
-        tk.Label(self.form_frame, text="Group:").pack(anchor="w", pady=(10,0))
-        self.group_entry = tk.Entry(self.form_frame, width=30)
-        self.group_entry.pack()
-        tk.Button(self.form_frame, text="Submit", command=self.add_user_to_group_submit).pack(pady=10)
-
-    def add_user_to_group_submit(self):
-        username = self.username_entry.get().strip()
-        group = self.group_entry.get().strip()
-        if not username or not group:
-            messagebox.showerror("Input Error", "Both username and group are required.")
-            return
-        self.output_box.delete(1.0, tk.END)
-        self.output_box.insert(tk.END, f"Adding user '{username}' to group '{group}'.")
-
-    def list_users(self):
-        # Placeholder for actual user listing
-        self.output_box.delete(1.0, tk.END)
-        self.output_box.insert(tk.END, "Listing all users and their shells...")
 
 if __name__ == "__main__":
-    root = tk.Tk()
-    app = UserManagerApp(root)
-    root.mainloop()
+    app = UserManagerApp()
+    app.mainloop()
 

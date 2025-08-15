@@ -1,10 +1,10 @@
-# main.py
+#!/usr/bin/env python3
 
-import tkinter as tk
+import ttkbootstrap as tb
 from ui.main_window import UserManagerApp
 
 if __name__ == "__main__":
-    root = tk.Tk()
-    app = UserManagerApp(root)
-    root.mainloop()
+#    root = tb.Window(themename="morph")
+    app = UserManagerApp()
+    app.mainloop()
 
